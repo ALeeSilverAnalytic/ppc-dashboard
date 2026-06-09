@@ -217,7 +217,13 @@ const ZOOM_CFG = () => ({
     pinch:{ enabled: IS_TOUCH },
     mode:'x',
   },
-  pan:{ enabled: IS_TOUCH, mode:'x' },
+  pan:{
+    enabled: IS_TOUCH,
+    mode:'x',
+    speed: 10,
+    threshold: 5,
+    onPan({ chart }) { syncCharts(chart); },
+  },
 });
 
 // shared x-axis sync
@@ -324,8 +330,8 @@ function makeLinkedOptions(yLabel, yUnit, dualAxis, onZoomPan) {
       },
       zoom:{
         ...ZOOM_CFG(),
-        zoom:{ ...ZOOM_CFG().zoom, onZoom({ chart }){ syncCharts(chart); onZoomPan && onZoomPan(chart); } },
-        pan:{ ...ZOOM_CFG().pan, onPan({ chart }){ syncCharts(chart); onZoomPan && onZoomPan(chart); } },
+        zoom:{ ...ZOOM_CFG().zoom, onZoom({ chart }){ syncCharts(chart); } },
+        pan:{ ...ZOOM_CFG().pan, onPan({ chart }){ syncCharts(chart); } },
       }
     },
     scales:{
@@ -433,19 +439,32 @@ function updateLinkedCharts() {
 
 // ─── ZOOM MODE ────────────────────────────────────────────────────
 window.setZoomMode = function(mode) {
-  if (IS_TOUCH && mode === 'select') return; // drag select not available on touch
+  if (IS_TOUCH && mode === 'select') return;
   zoomMode = mode;
-  const drag = mode === 'select';
+  const isSelect = mode === 'select';
   ['power','ctPow','ctCons','ctDev'].forEach(k => {
     const c = charts[k];
     if (!c) return;
-    c.options.plugins.zoom.zoom.drag.enabled = drag && !IS_TOUCH;
-    c.options.plugins.zoom.pan.enabled = !drag || IS_TOUCH;
-    document.getElementById({power:'powerChart',ctPow:'ctPowChart',ctCons:'ctConsChart',ctDev:'ctDevChart'}[k]).style.cursor = drag ? 'crosshair' : 'grab';
+    // drag zoom (box select) — desktop only
+    c.options.plugins.zoom.zoom.drag.enabled = isSelect && !IS_TOUCH;
+    // wheel zoom — stays controlled by mouseenter/leave listeners
+    // pan — enabled in move mode; works even without prior zoom
+    c.options.plugins.zoom.pan.enabled = !isSelect || IS_TOUCH;
+    // set axis limits for pan: if no zoom happened yet, set explicit range so pan has room
+    const xScale = c.scales.x;
+    if (xScale && !isSelect) {
+      // ensure min/max are set so pan doesn't get stuck
+      if (c.options.scales.x.min === undefined || c.options.scales.x.min === null) {
+        c.options.scales.x.min = xScale.min;
+        c.options.scales.x.max = xScale.max;
+      }
+    }
     c.update('none');
+    const canvasId = {power:'powerChart',ctPow:'ctPowChart',ctCons:'ctConsChart',ctDev:'ctDevChart'}[k];
+    document.getElementById(canvasId).style.cursor = isSelect ? 'crosshair' : 'grab';
   });
-  document.getElementById('btnSelect').classList.toggle('active', drag);
-  document.getElementById('btnPan').classList.toggle('active', !drag);
+  document.getElementById('btnSelect').classList.toggle('active', isSelect);
+  document.getElementById('btnPan').classList.toggle('active', !isSelect);
 };
 
 window.resetAllZoom = function() {
@@ -529,6 +548,13 @@ if (!IS_TOUCH) {
       if (!c) return;
       c.options.plugins.zoom.zoom.wheel.enabled = false;
       c.update('none');
+    });
+    // grabbing cursor while dragging in pan mode
+    canvas.addEventListener('mousedown', () => {
+      if (zoomMode === 'pan') canvas.style.cursor = 'grabbing';
+    });
+    canvas.addEventListener('mouseup', () => {
+      if (zoomMode === 'pan') canvas.style.cursor = 'grab';
     });
   });
 }
