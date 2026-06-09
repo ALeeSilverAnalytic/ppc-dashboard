@@ -105,13 +105,6 @@ canvas { touch-action: none; }
 <div class="controls">
   <label>Día:</label>
   <div style="display:flex;gap:5px;flex-wrap:wrap;" id="dayTabs"></div>
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-    <div class="mode-group">
-      <button class="mode-btn active" id="btnSelect" onclick="setZoomMode('select')">⬚ Seleccionar</button>
-      <button class="mode-btn" id="btnPan" onclick="setZoomMode('pan')">✥ Mover</button>
-    </div>
-    <button class="reset-btn" onclick="resetAllZoom()">↺ Reset</button>
-  </div>
 </div>
 
 <div class="main">
@@ -132,6 +125,13 @@ canvas { touch-action: none; }
     <div class="chart-block" style="padding-bottom:12px;">
       <div class="chart-block-header">
         <span class="chart-block-title">Potencia activa — señales PPC (MW) + Irradiancia POA (W/m²)</span>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <div class="mode-group">
+            <button class="mode-btn active" id="btnSelect" onclick="setZoomMode('select')">⬚ Zoom</button>
+            <button class="mode-btn" id="btnPan" onclick="setZoomMode('pan')">✥ Mover</button>
+          </div>
+          <button class="reset-btn" onclick="resetAllZoom()">↺ Reset</button>
+        </div>
       </div>
       <canvas id="powerChart" height="90"></canvas>
       <div class="legend" id="powerLegend"></div>
@@ -213,7 +213,7 @@ const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 const ZOOM_CFG = () => ({
   zoom: {
     drag:{ enabled: !IS_TOUCH, backgroundColor:'rgba(74,158,255,0.10)', borderColor:'rgba(74,158,255,0.55)', borderWidth:1 },
-    wheel:{ enabled: !IS_TOUCH },
+    wheel:{ enabled: false },  // enabled on hover only — see canvas listeners below
     pinch:{ enabled: IS_TOUCH },
     mode:'x',
   },
@@ -508,12 +508,36 @@ buildCTChart('ctConsChart', 'ctConsLegend', 'ctCons', 'kW', 'kW');
 buildCTChart('ctDevChart',  'ctDevLegend',  'ctDev',  'kW', 'kW');
 buildDailyCharts();
 selectDay(currentDay);
-// On touch devices default to pan mode and update button states
+
+// Wheel zoom only activates when cursor is over the canvas
+// This prevents accidental zoom while scrolling the page
+if (!IS_TOUCH) {
+  const chartCanvasMap = {
+    powerChart: 'power', ctPowChart: 'ctPow',
+    ctConsChart: 'ctCons', ctDevChart: 'ctDev'
+  };
+  Object.entries(chartCanvasMap).forEach(([canvasId, chartKey]) => {
+    const canvas = document.getElementById(canvasId);
+    canvas.addEventListener('mouseenter', () => {
+      const c = charts[chartKey];
+      if (!c) return;
+      c.options.plugins.zoom.zoom.wheel.enabled = true;
+      c.update('none');
+    });
+    canvas.addEventListener('mouseleave', () => {
+      const c = charts[chartKey];
+      if (!c) return;
+      c.options.plugins.zoom.zoom.wheel.enabled = false;
+      c.update('none');
+    });
+  });
+}
+
+// On touch devices default to pan mode
 if (IS_TOUCH) {
   zoomMode = 'pan';
   document.getElementById('btnSelect').classList.remove('active');
   document.getElementById('btnPan').classList.add('active');
-  // hide select button on touch - not useful
   document.getElementById('btnSelect').style.display = 'none';
 }
 </script>
